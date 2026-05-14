@@ -1,0 +1,4 @@
+# requirements to plot
+matplotlib
+# requirements for data manipulation
+pandas
