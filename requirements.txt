@@ -2,3 +2,4 @@
 matplotlib
 # requirements for data manipulation
 pandas
+matplotlib
