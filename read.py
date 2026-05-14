@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # %% Load and clean data
+# source: https://www.kaggle.com/datasets/kylegraupe/qqq-daily-option-chains-q1-2020-to-q4-2022
 DATA_PATH = "data/qqq_2020_2022.csv"
 
 df = pd.read_csv(DATA_PATH, low_memory=False)
@@ -88,6 +89,90 @@ print(current_date)  # should return the next available quote date after 2021-
 print(quote_at_strike(current_date, expiration=expiration_date, strike=quote_strike))  # should return the option with strike 300 expiring on 2021-03-31 on that date
 
 
+# %% Helper function to print a quote in a readable format
+def print_short_put(quote):
+    if quote is None:
+        print("No quote available.")
+        return
+    premium          = float(quote["P_LAST"])
+    capital_required = float(quote["STRIKE"]) * 100
+
+    print(f"\nShort Put on {quote['QUOTE_DATE']}:")
+    print(f"  Underlying: ${float(quote['UNDERLYING_LAST']):.2f}")
+    print(f"  Delta:      {quote['P_DELTA']:.2f}")
+    print(f"  DTE:        {quote['DTE']:.0f}")
+    print(f"  Expiration: {quote['EXPIRE_DATE']}")
+    print(f"  Strike:     ${quote['STRIKE']}")
+    print(f"  Assignment: ${capital_required}")
+    print(f"  Premium:    ${premium * 100:.0f}")
+
+
+# %% Helper function to print trade results
+def print_trade(assigned, total_pl, premium_pl, valuation_pl):
+    print(f"\nCurrent trade result:")
+    print(f"  Assigned: {'Yes' if assigned else 'No'}")
+    print(f"  Total P/L: ${total_pl:.2f}")
+    print(f"    Premium P/L: ${premium_pl:.2f}")
+    print(f"    Valuation P/L: ${valuation_pl:.2f}")
+
+
+# %% Function to calculate P&L for a short put trade between two quotes
+def compute_trade(quote_open, quote_close):
+    """Return (total_pl, premium_pl, valuation_pl) for a short put between two quotes.
+
+    - premium_pl  : change in extrinsic (time) value captured  = (extrinsic_open - extrinsic_close) * 100
+    - valuation_pl: change in intrinsic value (assignment risk) = (intrinsic_open - intrinsic_close) * 100
+    - total_pl    : premium_pl + valuation_pl  (= option_open - option_close) * 100
+    """
+    strike         = float(quote_open["STRIKE"])
+    p_open         = float(quote_open["P_LAST"])
+    p_close        = float(quote_close["P_LAST"])
+    ul_open        = float(quote_open["UNDERLYING_LAST"])
+    ul_close       = float(quote_close["UNDERLYING_LAST"])
+
+    intrinsic_close = ul_close - strike
+    assigned = quote_close["QUOTE_DATE"] == quote_open["EXPIRE_DATE"] and intrinsic_close < 0
+
+    premium_pl   = (p_open - p_close)  * 100
+    valuation_pl = (intrinsic_close if intrinsic_close < 0 else 0) * 100
+    total_pl     = (premium_pl + valuation_pl) if assigned else premium_pl
+
+    return assigned, total_pl, premium_pl, valuation_pl
+
+# example usage:
+quote_open = quote_at("2021-03-01", target_delta=0.3, target_dte=30, side="P")
+print_short_put(quote_open)
+expiration_date = quote_open["EXPIRE_DATE"]
+strike = quote_open["STRIKE"]
+current_date = get_next_date(pd.to_datetime("2021-03-01") + pd.Timedelta(days=10))
+quote_close = quote_at_strike(current_date, expiration=expiration_date, strike=strike)
+print_short_put(quote_close)
+assigned, total_pl, premium_pl, valuation_pl = compute_trade(quote_open, quote_close)
+print_trade(assigned, total_pl, premium_pl, valuation_pl)
+
+# example usage (in the money case):
+quote_open = quote_at("2021-03-01", target_delta=0.5, target_dte=30, side="P")
+print_short_put(quote_open)
+expiration_date = quote_open["EXPIRE_DATE"]
+strike = quote_open["STRIKE"]
+current_date = get_next_date(pd.to_datetime("2021-03-01") + pd.Timedelta(days=10))
+quote_close = quote_at_strike(current_date, expiration=expiration_date, strike=strike)
+print_short_put(quote_close)
+assigned, total_pl, premium_pl, valuation_pl = compute_trade(quote_open, quote_close)
+print_trade(assigned, total_pl, premium_pl, valuation_pl)
+
+# example usage (at expiration case):
+quote_open = quote_at("2021-03-01", target_delta=0.5, target_dte=30, side="P")
+print_short_put(quote_open)
+expiration_date = quote_open["EXPIRE_DATE"]
+strike = quote_open["STRIKE"]
+current_date = quote_open["EXPIRE_DATE"]  # at expiration
+quote_close = quote_at_strike(current_date, expiration=expiration_date, strike=strike)
+print_short_put(quote_close)
+assigned, total_pl, premium_pl, valuation_pl = compute_trade(quote_open, quote_close)
+print_trade(assigned, total_pl, premium_pl, valuation_pl)
+
+
 # %% Display options chain for a specific date, DTE, and delta range
 def display_chain(date, dte=None, delta_min=None, delta_max=None, data=df):
     chain = data[data["QUOTE_DATE"] == date].copy()
@@ -132,25 +217,7 @@ print(small.to_string(index=False))
 # %% Simulate a short put trade with on 2021-03-31, delta ~0.3, and DTE ~30 days
 trade_date = "2021-03-31"
 quote_start = quote_at(trade_date, target_delta=0.3, target_dte=30, side="P")
-# print the total premium and capital at risk for the trade
-def print_trade(t):
-    if t is None:
-        print("No quote available.")
-        return
-    premium          = float(t["P_LAST"])
-    capital_required = float(t["STRIKE"]) * 100
-    unrealized_pnl   = (premium - max(0, float(t["STRIKE"]) - float(t["UNDERLYING_LAST"]))) * 100
-    print(f"Simulated trade: Short 1 QQQ put")
-    print(f"  Underlying: ${float(t['UNDERLYING_LAST']):>8.2f}")
-    print(f"  Delta:      {t['P_DELTA']:.2f}")
-    print(f"  DTE:        {t['DTE']:.0f}")
-    print(f"  Expiration: {t['EXPIRE_DATE']}")
-    print(f"  Strike:     ${t['STRIKE']}")
-    print(f"  Assignment: ${capital_required:>8.2f}")
-    print(f"  Premium:    ${premium * 100:>8.2f}")
-    print(f"  P&L:        ${unrealized_pnl:>8.2f}")
 
-print_trade(quote_start)
 
 # %% Print the selected strike option value for the 10 days after the trade date
 dates_after = sorted([
@@ -192,7 +259,7 @@ plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
 
-# %% Simulate trade
+# %% Simulate a short put trade
 
 # Place trade
 date_start = get_next_date("2021-03-01")
@@ -200,19 +267,19 @@ print(f"Simulating trade on {date_start}...")
 quote_start = quote_at(date_start, target_delta=0.3, target_dte=30, side="P")
 expiration_date = quote_start["EXPIRE_DATE"]
 quote_strike    = quote_start["STRIKE"]
-print_trade(quote_start)
+print_short_put(quote_start)
 
 # Check trade P/L after X days
 days_passed = 10
 current_date = get_next_date(pd.to_datetime(date_start) + pd.Timedelta(days=days_passed))
 print(f"\nChecking trade after {days_passed} days on {current_date}...")
 quote_current = quote_at_strike(current_date, expiration=expiration_date, strike=quote_strike)
-print_trade(quote_current)
+print_short_put(quote_current)
 
 # Check trade P/L at expiration
 print(f"\nChecking trade at expiration on {expiration_date}...")
 quote_expiration = quote_at_strike(expiration_date, expiration=expiration_date, strike=quote_strike)
-print_trade(quote_expiration)
+print_short_put(quote_expiration)
 
 # Premium P/L at expiration
 premium_pl = (float(quote_start["P_LAST"]) - max(0, float(quote_strike) - float(quote_expiration["UNDERLYING_LAST"]))) * 100
@@ -242,4 +309,36 @@ total_pl = premium_pl - assignment_cost
 print(f"Total P/L at expiration: ${total_pl:.2f}")
 
 
-# %%
+# %% Simulate consecutive selling short puts at 50 delta, 30 DTE year 2021
+
+# Get all buy dates spread 30 days accross 2021 with available data
+start_date = pd.to_datetime("2021-01-01")
+end_date   = pd.to_datetime("2021-12-31")
+available_dates = sorted([d for d in df["QUOTE_DATE"].unique() if start_date <= pd.to_datetime(d) <= end_date])
+
+# get buy dates
+available_dates_series = pd.to_datetime(pd.Series(available_dates))
+monthly_first_dates = available_dates_series[~available_dates_series.dt.to_period("M").duplicated()].dt.strftime("%Y-%m-%d").tolist()
+print(monthly_first_dates)
+
+
+# %% Strategy execution engine with conditions
+
+# Plan buy conditions
+buy_target_delta = 0.5
+buy_target_dte   = 30
+
+# Plan sell conditions
+sell_expiration_date = True
+sell_profit = None
+sell_loss   = None
+
+# Execution loop
+current_date = df["QUOTE_DATE"][0]
+while True:
+    # Execute buy condition
+    quote_open = quote_at(current_date, target_delta=buy_target_delta, target_dte=buy_target_dte, side="P")
+    close_date = get_next_date(quote_open["EXPIRE_DATE"])
+    quote_close = quote_at_strike(close_date, close_date, quote_open["STRIKE"])
+
+
