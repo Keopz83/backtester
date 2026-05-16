@@ -1,5 +1,4 @@
-# requirements to plot
 matplotlib
-# requirements for data manipulation
 pandas
 matplotlib
+line_profiler
