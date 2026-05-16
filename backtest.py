@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 import time
 from lib import *
 
-# %% Load and clean data
-# source: https://www.kaggle.com/datasets/kylegraupe/qqq-daily-option-chains-q1-2020-to-q4-2022
-DATA_PATH = "data/qqq_2020_2022.csv"
-df2 = load_data(DATA_PATH)
-
+try:
+    profile
+except NameError:
+    def profile(func):
+        return func
 
 # %% Strategy execution engine with conditions
+@profile
 def execute_strategy(df, buy_condition, sell_condition):
     """Execute the short put strategy with the given buy and sell conditions."""
     # This function will implement the backtesting loop based on the specified conditions.
@@ -64,7 +65,16 @@ def execute_strategy(df, buy_condition, sell_condition):
     print(f"  Max capital req:  ${max_capital:.2f}")
     print(f"  Return:           {accrued_pl / max_capital * 100:.2f}%")
 
-# example usage:
-buy_condition = {'delta': 0.3, 'dte': 30}
-sell_condition = {'dte': 0} # sell at expiration
-execute_strategy(df2, buy_condition, sell_condition)
+
+
+if __name__ == "__main__":
+
+    # example usage:
+    DATA_PATH = "data/qqq_2020_2022.csv"
+    df2 = load_data(DATA_PATH)
+
+    buy_condition = {'delta': 0.3, 'dte': 30}
+    sell_condition = {'dte': 0} # sell at expiration
+    execute_strategy(df2, buy_condition, sell_condition)
+
+# %%

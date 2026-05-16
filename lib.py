@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import pandas as pd
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "qqq_2020_2022.csv")
@@ -17,7 +18,10 @@ def get_data_section(data):
     df2["DTE"]     = pd.to_numeric(df2["DTE"], errors="coerce")
     df2["C_DELTA"] = pd.to_numeric(df2["C_DELTA"], errors="coerce")
     df2["P_DELTA"] = pd.to_numeric(df2["P_DELTA"], errors="coerce")
-    return df2.dropna()
+    df2 = df2.dropna()
+    df2 = df2.sort_values("QUOTE_DATE").set_index("QUOTE_DATE", drop=False)
+    df2.attrs["sorted_dates"] = np.sort(df2.index.unique().values)
+    return df2
 
 def load_data(path=DATA_PATH):
     df = load_data_full(path)
@@ -25,26 +29,29 @@ def load_data(path=DATA_PATH):
 
 def get_next_date(data, date):
     """Return `date` if it exists in the dataset, otherwise the closest available QUOTE_DATE after it."""
-    dates = pd.to_datetime(data["QUOTE_DATE"].unique())
-    ts = pd.Timestamp(date)
-    if ts in dates:
-        return ts.strftime("%Y-%m-%d")
-    later = dates[dates > ts]
-    if later.empty:
+    sorted_dates = data.attrs.get("sorted_dates") if hasattr(data, "attrs") else None
+    if sorted_dates is None:
+        sorted_dates = np.sort(data.index.unique().values)
+    ts_str = pd.Timestamp(date).strftime("%Y-%m-%d")
+    idx = np.searchsorted(sorted_dates, ts_str)
+    if idx >= len(sorted_dates):
         return None
-    return later.min().strftime("%Y-%m-%d")
+    return sorted_dates[idx]
 
 
 def underlying_at(data, date):
     """Return the underlying price (UNDERLYING_LAST) at the given QUOTE_DATE."""
-    rows = data[data["QUOTE_DATE"] == date]["UNDERLYING_LAST"]
-    if rows.empty:
+    if date not in data.index:
         return None
-    return float(rows.iloc[0])
+    rows = data.loc[date]
+    if isinstance(rows, pd.Series):
+        return float(rows["UNDERLYING_LAST"])
+    return float(rows["UNDERLYING_LAST"].iloc[0])
 
 
 def quote_at(data, date, target_delta, target_dte, side):
-    """Return the option row closest to target_delta and target_dte on the given date.
+    """
+    Return the option row closest to target_delta and target_dte on the given date.
 
     Parameters
     ----------
@@ -55,21 +62,25 @@ def quote_at(data, date, target_delta, target_dte, side):
     """
     if side not in ("P", "C"):
         raise ValueError(f"side must be 'P' or 'C', got {side!r}")
-    delta_col = f"{side}_DELTA"
-    chain = data[data["QUOTE_DATE"] == date].copy()
-    if chain.empty:
+    if date not in data.index:
         return None
+    delta_col = f"{side}_DELTA"
+    chain = data.loc[date]
+    if isinstance(chain, pd.Series):
+        chain = chain.to_frame().T
+    chain = chain.copy()
     chain["_score"] = (chain[delta_col].abs() - target_delta).abs() + (chain["DTE"] - target_dte).abs() * 0.01
     return chain.sort_values("_score").iloc[0]
 
 
 def quote_at_strike(data, date, expiration, strike):
     """Return the option row for a specific strike and expiration on the given quote date."""
-    row = data[
-        (data["QUOTE_DATE"] == date) &
-        (data["EXPIRE_DATE"] == expiration) &
-        (data["STRIKE"] == strike)
-    ]
+    if date not in data.index:
+        return None
+    day = data.loc[date]
+    if isinstance(day, pd.Series):
+        day = day.to_frame().T
+    row = day[(day["EXPIRE_DATE"] == expiration) & (day["STRIKE"] == strike)]
     if row.empty:
         return None
     return row.iloc[0]
@@ -124,10 +135,15 @@ def compute_trade(quote_open, quote_close):
 
 
 def display_chain(data, date, dte=None, delta_min=None, delta_max=None):
-    chain = data[data["QUOTE_DATE"] == date].copy()
-    chain["DTE"]     = pd.to_numeric(chain["DTE"], errors="coerce")
-    chain["C_DELTA"] = pd.to_numeric(chain["C_DELTA"], errors="coerce")
-    chain["P_DELTA"] = pd.to_numeric(chain["P_DELTA"], errors="coerce")
+    if date not in data.index:
+        print(f"No data found for {date}"
+              + (f"  DTE={dte}" if dte is not None else "")
+              + (f"  delta=[{delta_min}, {delta_max}]" if delta_min is not None or delta_max is not None else ""))
+        return
+    chain = data.loc[date]
+    if isinstance(chain, pd.Series):
+        chain = chain.to_frame().T
+    chain = chain.copy()
 
     if dte is not None:
         chain = chain[chain["DTE"].round().eq(dte)]

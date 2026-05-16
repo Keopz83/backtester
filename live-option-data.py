@@ -24,3 +24,5 @@ else:
     print(f"No put option found for QQQ with a strike price of 710 and expiration date {closest_expiration}.")
 
 
+
+# %%
