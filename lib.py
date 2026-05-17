@@ -2,6 +2,12 @@ import os
 import numpy as np
 import pandas as pd
 
+try:
+    profile
+except NameError:
+    def profile(func):
+        return func
+
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "qqq_2020_2022.csv")
 
 
@@ -15,9 +21,13 @@ def get_data_section(data):
               'C_DELTA', 'C_LAST', 'P_DELTA', 'P_LAST', 'UNDERLYING_LAST']].copy()
     df2["QUOTE_DATE"]  = df2["QUOTE_DATE"].str.strip()
     df2["EXPIRE_DATE"] = df2["EXPIRE_DATE"].str.strip()
-    df2["DTE"]     = pd.to_numeric(df2["DTE"], errors="coerce")
-    df2["C_DELTA"] = pd.to_numeric(df2["C_DELTA"], errors="coerce")
-    df2["P_DELTA"] = pd.to_numeric(df2["P_DELTA"], errors="coerce")
+    df2["DTE"]             = pd.to_numeric(df2["DTE"], errors="coerce")
+    df2["STRIKE"]          = pd.to_numeric(df2["STRIKE"], errors="coerce")
+    df2["C_DELTA"]         = pd.to_numeric(df2["C_DELTA"], errors="coerce")
+    df2["C_LAST"]          = pd.to_numeric(df2["C_LAST"], errors="coerce")
+    df2["P_DELTA"]         = pd.to_numeric(df2["P_DELTA"], errors="coerce")
+    df2["P_LAST"]          = pd.to_numeric(df2["P_LAST"], errors="coerce")
+    df2["UNDERLYING_LAST"] = pd.to_numeric(df2["UNDERLYING_LAST"], errors="coerce")
     df2 = df2.dropna()
     df2 = df2.sort_values("QUOTE_DATE").set_index("QUOTE_DATE", drop=False)
     df2.attrs["sorted_dates"] = np.sort(df2.index.unique().values)
@@ -48,7 +58,7 @@ def underlying_at(data, date):
         return float(rows["UNDERLYING_LAST"])
     return float(rows["UNDERLYING_LAST"].iloc[0])
 
-
+@profile
 def quote_at(data, date, target_delta, target_dte, side):
     """
     Return the option row closest to target_delta and target_dte on the given date.
