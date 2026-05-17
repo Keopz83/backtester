@@ -29,9 +29,6 @@ def sell_at_expiration(data, quote_open, log=False):
     """Close the position at expiration. Returns (close_date, quote_close) or (None, None) if not found."""
     close_date = get_next_date(data, quote_open["EXPIRE_DATE"])
     quote_close = quote_at_strike(data, close_date, close_date, quote_open["STRIKE"])
-    if log and quote_close is not None:
-        print("CLOSE TRADE:")
-        print_short_put(quote_close)
     return close_date, quote_close
 
 
