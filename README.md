@@ -75,6 +75,7 @@ Example: sweep 10 DTE values (7–70 days) at fixed delta 0.2 across ~90 weekly 
 
 ## Sample screenshots
 
+![Strategy Plot](screenshots/screenshot_strategy_plot.png)
 ![Return Distribution by Condition](screenshots/screenshot_gridsearch_return_dist_by_condition.png)
 ![Mean Return by Condition](screenshots/screenshot_gridsearch_mean_return_by_condition.png)
 
