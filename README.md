@@ -23,6 +23,9 @@ Planned features to extend the framework beyond the current short put strategy:
 2. **Underlying technicals as entry/exit filters** — gate trades on momentum indicators (SMA crossovers, rate-of-change) or mean-reversion signals (RSI overbought/oversold) derived from the underlying price
 3. **Short covered call** — after taking assignment on a short put, sell an OTM call against the acquired shares to collect additional premium while waiting for the stock to recover
 4. **Wheel strategy** — combine the short put and covered call into a continuous cycle: sell puts until assigned, then sell covered calls until called away, then repeat
+5. **Multi-ticker support** — extend the data pipeline to load and backtest across multiple underlyings (e.g. SPY, AAPL, TSLA) to evaluate strategy robustness beyond QQQ
+6. **Underlying equity backtesting** — add support for trading the underlying stock directly (long/short entries based on technical signals) to compare equity strategies against options strategies on the same data
+7. **Fundamental data as entry filters** — integrate earnings, P/E, revenue growth, or analyst rating signals as additional conditions to gate or size trades
 
 
 
