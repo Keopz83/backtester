@@ -43,7 +43,12 @@ start_dates = pd.date_range(start="2021-02-10", end="2022-11-01", freq='25D').to
 start_dates = [d.strftime("%Y-%m-%d") for d in start_dates]
 # start_dates = ['2021-01-01']
 
-# Run grid search and plot results
+# %% Run strategy once with the first buy condition and starting date, to verify it works
+result = execute_strategy(df2, buy_conditions[0], sell_condition, date=start_dates[0], log = True)
+print(result)
+plot_strategy(df2, result)
+
+# %% Run grid search and plot results
 results = grid_search(df2, buy_conditions, sell_condition, start_dates, log = False)
 plot_return_distribution(results, buy_conditions)
 plot_mean_return_by_buy_condition(results, buy_conditions)
