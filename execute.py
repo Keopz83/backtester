@@ -146,7 +146,7 @@ def compute_trade_results(quote_open, quote_close, accrued_pl, trade_records, lo
 
 # Strategy execution engine with conditions
 @profile
-def execute_strategy(data, buy_condition, sell_condition, date = None, log = False):
+def execute_strategy(data, strategy, date = None, log = False):
     """Execute the short put strategy with the given buy and sell conditions."""    
 
     # backtest range
@@ -160,7 +160,7 @@ def execute_strategy(data, buy_condition, sell_condition, date = None, log = Fal
     while True:
 
         # OPEN TRADE: sell put on next available date
-        quote_open, max_capital = open_trade(data, buy_condition, current_date, max_capital, trade_records, log=log)
+        quote_open, max_capital = open_trade(data, strategy['buy_condition'], current_date, max_capital, trade_records, log=log)
         if quote_open is None:
             break
 
@@ -173,7 +173,7 @@ def execute_strategy(data, buy_condition, sell_condition, date = None, log = Fal
             break
 
         # CLOSE TRADE: sell on condition
-        quote_close = close_trade(data, sell_condition, quote_open, current_date, trade_records, log=log)
+        quote_close = close_trade(data, strategy['sell_condition'], quote_open, current_date, trade_records, log=log)
         if quote_close is None:
             # undo trade
             if log: print(f"  [pos=#{trade_records[-1]['position_id']}] Stopping: no close quote found — discarding last open trade")

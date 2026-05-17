@@ -178,3 +178,29 @@ def display_chain(data, date, dte=None, delta_min=None, delta_max=None):
     print(f"QQQ Option Chain — {date}{dte_info}{delta_info}  (underlying: {chain['UNDERLYING_LAST'].iloc[0]})")
     print(chain[cols].sort_values(["EXPIRE_DATE", "STRIKE"]).to_string(index=False))
     return chain
+
+def save_results(results, buy_conditions, sell_condition, start_dates):
+    results_df = pd.DataFrame(results)
+    import os, json
+    from datetime import datetime
+    if not os.path.exists("results"):
+        os.makedirs("results")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    pct_profit = sell_condition.get("pct_profit")
+    pct_loss   = sell_condition.get("pct_loss")
+    sell_tag   = f"tp{pct_profit}" if pct_profit else f"dte{sell_condition.get('dte', 0)}"
+    if pct_loss:
+        sell_tag += f"_sl{pct_loss}"
+    deltas = "_".join(str(c["delta"]) for c in buy_conditions)
+    dtes   = "_".join(str(c["dte"])   for c in buy_conditions)
+    strategy_tag = f"d{deltas}_dte{dtes}_{sell_tag}"
+    base = f"results/grid_search_{strategy_tag}_{timestamp}"
+    results_df.to_csv(f"{base}.csv", index=False)
+    strategy_info = {
+        "timestamp": timestamp,
+        "buy_conditions": buy_conditions,
+        "sell_condition": sell_condition,
+        "start_dates": start_dates,
+    }
+    with open(f"{base}.json", "w") as f:
+        json.dump(strategy_info, f, indent=2, default=str)
