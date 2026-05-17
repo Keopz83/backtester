@@ -79,10 +79,10 @@ def execute_strategy(df, buy_condition, sell_condition, date = None):
         if current_date is None or pd.to_datetime(current_date) > end_date:
             break
 
-    print(f"\nSummary: {start_date.date()} to {end_date.date()}")
-    print(f"  Total P/L:        ${accrued_pl:.2f}")
-    print(f"  Max capital req:  ${max_capital:.2f}")
-    print(f"  Return:           {accrued_pl / max_capital * 100:.2f}%")
+    if log: print(f"\nSummary: {start_date.date()} to {end_date.date()}")
+    if log: print(f"  Total P/L:        ${accrued_pl:.2f}")
+    if log: print(f"  Max capital req:  ${max_capital:.2f}")
+    if log: print(f"  Return:           {accrued_pl / max_capital * 100:.2f}%")
     return {
         "start_date": start_date,
         "end_date": end_date,
@@ -131,6 +131,59 @@ def plot_strategy(df, result):
     plt.tight_layout()
     plt.show()
 
+
+
+# %% Grid search over buy condition and start date
+def grid_search(df2, buy_conditions, sell_condition, start_dates):
+    """Run grid search over buy conditions and start dates, returning a list of results."""
+
+    # Implement grid search over buy conditions and start dates
+    results = []
+    for buy_cond in buy_conditions:
+        for start_date in start_dates:
+            #print(f"\n=== Running strategy with buy_condition={buy_cond} and start_date={start_date} ===")
+            result = execute_strategy(df2, buy_cond, sell_condition, date=start_date)
+            result["buy_condition"] = buy_cond
+            result["start_date"] = start_date
+            results.append(result)
+    
+    return results
+
+# Plot 2D bubble chart where x is delta, y is dte, bubble size is return, and color is start date
+def plot_grid_search_results(results):
+    import matplotlib.dates as mdates
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for res in results:
+        buy_cond = res["buy_condition"]
+        start_date = pd.to_datetime(res["start_date"])
+        ret = res["accrued_pl"] / res["max_capital"] * 100 if res["max_capital"] > 0 else 0
+        ax.scatter(buy_cond['delta'], buy_cond['dte'], s=abs(ret)*10, color=plt.cm.viridis(mdates.date2num(start_date) / mdates.date2num(pd.to_datetime("2022-12-31"))), alpha=0.6) 
+    ax.set_xlabel("Target Delta")
+    ax.set_ylabel("Target DTE")
+    ax.set_title("Grid Search Results: Return by Buy Condition and Start Date")
+    ax.grid(True, alpha=0.3)
+    sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=plt.Normalize(vmin=mdates.date2num(pd.to_datetime("2021-01-01")), vmax=mdates.date2num(pd.to_datetime("2022-12-31"))))
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax)
+    cbar.set_label("Start Date")
+    plt.show()
+
+# Plot return distribution as histogram for each of the 5 buy conditions
+def plot_return_distribution(results, buy_conditions):
+    fig, axes = plt.subplots(len(buy_conditions), 1, figsize=(10, 4 * len(buy_conditions)), sharex=True)
+    for ax, buy_cond in zip(axes, buy_conditions):
+        cond_results = [res for res in results if res["buy_condition"] == buy_cond]
+        returns = [res["accrued_pl"] / res["max_capital"] * 100 if res["max_capital"] > 0 else 0 for res in cond_results]
+        mean_val = np.mean(returns) if returns else 0
+        ax.hist(returns, bins=20, label=f"Mean: {mean_val:.2f}%")
+        ax.set_title(f"Delta={buy_cond['delta']}, DTE={buy_cond['dte']}")
+        ax.set_ylabel("Count")
+        ax.legend()
+    axes[-1].set_xlabel("Return (%)")
+    fig.suptitle("Return Distribution by Buy Condition")
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.show()
+
 # %% Main execution
 if __name__ == "__main__":
 
@@ -138,65 +191,24 @@ if __name__ == "__main__":
     DATA_PATH = "data/qqq_2020_2022.csv"
     df2 = load_data(DATA_PATH)
 
+    # Define a simple buy/sell condition and execute the strategy
     buy_condition = {'delta': 0.3, 'dte': 30}
     sell_condition = {'dte': 0}  # sell at expiration
     result = execute_strategy(df2, buy_condition, sell_condition)
     plot_strategy(df2, result)
 
+    # Define a set of buy conditions to test in the grid search
+    buy_conditions = [
+        {'delta': 0.2, 'dte': 30},
+        {'delta': 0.3, 'dte': 30},
+        {'delta': 0.4, 'dte': 30},
+        {'delta': 0.3, 'dte': 45},
+        {'delta': 0.3, 'dte': 60},
+    ]
 
-# %% Grid search
-buy_conditions = [
-    {'delta': 0.2, 'dte': 30},
-    {'delta': 0.3, 'dte': 30},
-    {'delta': 0.4, 'dte': 30},
-    {'delta': 0.3, 'dte': 45},
-    {'delta': 0.3, 'dte': 60},
-]
-# simulate 60 different starting dates, radomized, between 2021-02-10 and 2022-11-01
-start_dates = pd.date_range(start="2021-02-10", end="2022-11-01", freq='7D').to_pydatetime().tolist()
-start_dates = [d.strftime("%Y-%m-%d") for d in start_dates]
-
-# Implement grid search over buy conditions and start dates
-results = []
-for buy_cond in buy_conditions:
-    for start_date in start_dates:
-        #print(f"\n=== Running strategy with buy_condition={buy_cond} and start_date={start_date} ===")
-        result = execute_strategy(df2, buy_cond, sell_condition, date=start_date)
-        result["buy_condition"] = buy_cond
-        result["start_date"] = start_date
-        results.append(result)
-
-# Plot 2D bubble chart where x is delta, y is dte, bubble size is return, and color is start date
-import matplotlib.dates as mdates
-fig, ax = plt.subplots(figsize=(10, 6))
-for res in results:
-    buy_cond = res["buy_condition"]
-    start_date = pd.to_datetime(res["start_date"])
-    ret = res["accrued_pl"] / res["max_capital"] * 100 if res["max_capital"] > 0 else 0
-    ax.scatter(buy_cond['delta'], buy_cond['dte'], s=abs(ret)*10, color=plt.cm.viridis(mdates.date2num(start_date) / mdates.date2num(pd.to_datetime("2022-12-31"))), alpha=0.6) 
-ax.set_xlabel("Target Delta")
-ax.set_ylabel("Target DTE")
-ax.set_title("Grid Search Results: Return by Buy Condition and Start Date")
-ax.grid(True, alpha=0.3)
-sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=plt.Normalize(vmin=mdates.date2num(pd.to_datetime("2021-01-01")), vmax=mdates.date2num(pd.to_datetime("2022-12-31"))))
-sm.set_array([])
-cbar = plt.colorbar(sm, ax=ax)
-cbar.set_label("Start Date")
-plt.show()
-
-# %% Plot return distribution as histogram for each of the 5 buy conditions
-fig, axes = plt.subplots(len(buy_conditions), 1, figsize=(10, 4 * len(buy_conditions)), sharex=True)
-for ax, buy_cond in zip(axes, buy_conditions):
-    cond_results = [res for res in results if res["buy_condition"] == buy_cond]
-    returns = [res["accrued_pl"] / res["max_capital"] * 100 if res["max_capital"] > 0 else 0 for res in cond_results]
-    mean_val = np.mean(returns) if returns else 0
-    ax.hist(returns, bins=20, label=f"Mean: {mean_val:.2f}%")
-    ax.set_title(f"Delta={buy_cond['delta']}, DTE={buy_cond['dte']}")
-    ax.set_ylabel("Count")
-    ax.legend()
-axes[-1].set_xlabel("Return (%)")
-fig.suptitle("Return Distribution by Buy Condition")
-plt.tight_layout(rect=[0, 0, 1, 0.97])
-plt.show()
-
-# %%
+    # simulate 60 different starting dates, radomized, between 2021-02-10 and 2022-11-01
+    start_dates = pd.date_range(start="2021-02-10", end="2022-11-01", freq='7D').to_pydatetime().tolist()
+    start_dates = [d.strftime("%Y-%m-%d") for d in start_dates]
+    results = grid_search(df2, buy_conditions, sell_condition, start_dates)
+    #plot_grid_search_results(results)
+    plot_return_distribution(results, buy_conditions)
