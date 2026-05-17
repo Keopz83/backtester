@@ -2,3 +2,5 @@ matplotlib
 pandas
 matplotlib
 line_profiler
+sqlalchemy # for loading data from sqlite database (dolt sql server)
+pymysql
