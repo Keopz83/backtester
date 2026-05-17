@@ -56,16 +56,17 @@ def open_trade(data, buy_condition, current_date, max_capital, trade_records, lo
 
 def close_trade(data, sell_condition, quote_open, current_date, trade_records, log=False):
     """Find the close quote for an open short put.
-    Returns (close_date, quote_close, status) where status is:
-      'ok'   — trade closed successfully
-      'skip' — no close quote found, caller should advance 30 days and continue
-      'stop' — expiration outside dataset, caller should discard open trade and break
+    Returns quote_close on success, or None if no close quote was found.
     """
-    if sell_condition.get("pct_profit") is not None:
-        pct_profit = sell_condition["pct_profit"] / 100.0
+    pct_profit = sell_condition.get("pct_profit")
+    pct_loss   = sell_condition.get("pct_loss")
+    position_id = trade_records[-1]["position_id"]
+
+    if pct_profit is not None or pct_loss is not None:
+        pct_profit_ratio = pct_profit / 100.0 if pct_profit is not None else None
+        pct_loss_ratio   = pct_loss   / 100.0 if pct_loss   is not None else None
         p_open = float(quote_open["P_LAST"])
         expire_date = get_next_date(data, quote_open["EXPIRE_DATE"])
-        position_id = trade_records[-1]["position_id"]
 
         if expire_date is None:
             if log: print(f"  [pos=#{position_id}] Stopping: expiration {quote_open['EXPIRE_DATE']} is outside the dataset — discarding last open trade")
@@ -76,19 +77,24 @@ def close_trade(data, sell_condition, quote_open, current_date, trade_records, l
         expire_idx = np.searchsorted(sorted_dates, pd.Timestamp(expire_date).strftime("%Y-%m-%d"), side="right")
         quote_close = None
         close_date = expire_date
+        close_reason = "expiration"
 
         for scan_date in sorted_dates[start_idx:expire_idx]:
             q = quote_at_strike(data, scan_date, quote_open["EXPIRE_DATE"], quote_open["STRIKE"])
             if q is None:
                 continue
             p_current = float(q["P_LAST"])
-            if p_open > 0 and (p_open - p_current) / p_open >= pct_profit:
+            hit_profit = pct_profit_ratio is not None and p_open > 0 and (p_open - p_current) / p_open >= pct_profit_ratio
+            hit_loss   = pct_loss_ratio   is not None and p_open > 0 and (p_current - p_open) / p_open >= pct_loss_ratio
+            if hit_profit or hit_loss:
                 quote_close = q
                 close_date = scan_date
+                close_reason = "take_profit" if hit_profit else "stop_loss"
                 break
 
         if quote_close is None:
             close_date, quote_close = sell_at_expiration(data, quote_open, log=log)
+            close_reason = "expiration"
 
         if quote_close is None:
             if log: print(f"  [pos=#{position_id}] Skipping: no close quote found for {close_date}")
@@ -102,6 +108,7 @@ def close_trade(data, sell_condition, quote_open, current_date, trade_records, l
             "trade_id": trade_id,
             "position_id": position_id,
             "type": "close",
+            "close_reason": close_reason,
             "date": pd.to_datetime(quote_close["QUOTE_DATE"]),
             "underlying": float(quote_close["UNDERLYING_LAST"]),
             "strike": float(quote_open["STRIKE"]),
@@ -123,6 +130,7 @@ def close_trade(data, sell_condition, quote_open, current_date, trade_records, l
             "trade_id": trade_id,
             "position_id": position_id,
             "type": "close",
+            "close_reason": "expiration",
             "date": pd.to_datetime(quote_close["QUOTE_DATE"]),
             "underlying": float(quote_close["UNDERLYING_LAST"]),
             "strike": float(quote_open["STRIKE"]),
@@ -139,6 +147,63 @@ def compute_trade_results(quote_open, quote_close, accrued_pl, trade_records, lo
     accrued_pl += total_pl
     if log: print(f"\n## [pos=#{trade_records[-1]['position_id']} trade=#{trade_records[-1]['trade_id']}] Accrued P/L so far: ${accrued_pl:.2f}")
     return accrued_pl
+
+
+# Plotting function to visualize strategy performance
+def plot_strategy(df, result):
+    """Plot underlying price over time with buy/sell points from execute_strategy result."""
+    underlying = df["UNDERLYING_LAST"].groupby(level=0).first()
+    underlying.index = pd.to_datetime(underlying.index)
+    underlying = underlying.sort_index()
+    underlying = underlying[
+        (underlying.index >= result["start_date"]) &
+        (underlying.index <= result["end_date"])
+    ]
+
+    opens             = [t for t in result["trade_records"] if t["type"] == "open"]
+    unassigned_closes = [t for t in result["trade_records"] if t["type"] == "close" and not t["assigned"]]
+    assigned_closes   = [t for t in result["trade_records"] if t["type"] == "close" and t["assigned"]]
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(underlying.index, underlying.values, color="steelblue", linewidth=1, label="QQQ Underlying")
+
+    _label_style = dict(
+        textcoords="offset points", fontsize=7, color="black",
+        ha="center", va="bottom",
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.6, edgecolor="none"),
+    )
+
+    if opens:
+        ax.scatter([t["date"] for t in opens], [t["underlying"] for t in opens],
+                   marker="^", color="green", s=80, zorder=5, label="Sell Put (Open)")
+        for t in opens:
+            ax.annotate(f"#{t['position_id']} {t['date'].strftime('%m/%d/%y')}",
+                        xy=(t["date"], t["underlying"]), xytext=(0, 10), **_label_style)
+    if unassigned_closes:
+        ax.scatter([t["date"] for t in unassigned_closes], [t["underlying"] for t in unassigned_closes],
+                   marker="v", color="tomato", s=80, zorder=5, label="Close (Expired)")
+        for t in unassigned_closes:
+            reason = {"take_profit": "TAKE PROFIT", "stop_loss": "STOP LOSS", "expiration": "EXPIRATION"}.get(t.get("close_reason"), "")
+            ax.annotate(f"#{t['position_id']} {t['date'].strftime('%m/%d/%y')}\n{reason}",
+                        xy=(t["date"], t["underlying"]), xytext=(0, 10), **_label_style)
+    if assigned_closes:
+        ax.scatter([t["date"] for t in assigned_closes], [t["underlying"] for t in assigned_closes],
+                   marker="x", color="darkred", s=120, zorder=5, label="Close (Assigned)")
+        for t in assigned_closes:
+            reason = {"take_profit": "TAKE PROFIT", "stop_loss": "STOP LOSS", "expiration": "EXPIRATION"}.get(t.get("close_reason"), "")
+            ax.annotate(f"#{t['position_id']} {t['date'].strftime('%m/%d/%y')}\n{reason}",
+                        xy=(t["date"], t["underlying"]), xytext=(0, 10), **_label_style)
+
+    ax.set_title(
+        f"QQQ Short Put Strategy — {result['start_date'].date()} to {result['end_date'].date()}"
+        f"  |  Return: {result['accrued_pl'] / result['max_capital'] * 100:.2f}%"
+    )
+    ax.set_ylabel("Underlying Price ($)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
 
 
 # Strategy execution engine with conditions
@@ -199,58 +264,3 @@ def execute_strategy(data, strategy, date = None, log = False):
         "max_capital": max_capital,
         "trade_records": trade_records,
     }
-
-
-# Plotting function to visualize strategy performance
-def plot_strategy(df, result):
-    """Plot underlying price over time with buy/sell points from execute_strategy result."""
-    underlying = df["UNDERLYING_LAST"].groupby(level=0).first()
-    underlying.index = pd.to_datetime(underlying.index)
-    underlying = underlying.sort_index()
-    underlying = underlying[
-        (underlying.index >= result["start_date"]) &
-        (underlying.index <= result["end_date"])
-    ]
-
-    opens             = [t for t in result["trade_records"] if t["type"] == "open"]
-    unassigned_closes = [t for t in result["trade_records"] if t["type"] == "close" and not t["assigned"]]
-    assigned_closes   = [t for t in result["trade_records"] if t["type"] == "close" and t["assigned"]]
-
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(underlying.index, underlying.values, color="steelblue", linewidth=1, label="QQQ Underlying")
-
-    _label_style = dict(
-        textcoords="offset points", fontsize=7, color="black",
-        ha="center", va="bottom",
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.6, edgecolor="none"),
-    )
-
-    if opens:
-        ax.scatter([t["date"] for t in opens], [t["underlying"] for t in opens],
-                   marker="^", color="green", s=80, zorder=5, label="Sell Put (Open)")
-        for t in opens:
-            ax.annotate(f"#{t['position_id']} {t['date'].strftime('%m/%d/%y')}",
-                        xy=(t["date"], t["underlying"]), xytext=(0, 10), **_label_style)
-    if unassigned_closes:
-        ax.scatter([t["date"] for t in unassigned_closes], [t["underlying"] for t in unassigned_closes],
-                   marker="v", color="tomato", s=80, zorder=5, label="Close (Expired)")
-        for t in unassigned_closes:
-            ax.annotate(f"#{t['position_id']} {t['date'].strftime('%m/%d/%y')}",
-                        xy=(t["date"], t["underlying"]), xytext=(0, 10), **_label_style)
-    if assigned_closes:
-        ax.scatter([t["date"] for t in assigned_closes], [t["underlying"] for t in assigned_closes],
-                   marker="x", color="darkred", s=120, zorder=5, label="Close (Assigned)")
-        for t in assigned_closes:
-            ax.annotate(f"#{t['position_id']} {t['date'].strftime('%m/%d/%y')}",
-                        xy=(t["date"], t["underlying"]), xytext=(0, 10), **_label_style)
-
-    ax.set_title(
-        f"QQQ Short Put Strategy — {result['start_date'].date()} to {result['end_date'].date()}"
-        f"  |  Return: {result['accrued_pl'] / result['max_capital'] * 100:.2f}%"
-    )
-    ax.set_ylabel("Underlying Price ($)")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.show()

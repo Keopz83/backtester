@@ -44,13 +44,19 @@ strategy1 = {
 strategy2 = {
     'type': 'wheel',
     'buy_condition': {'delta': 0.2, 'dte': 30},
-    'sell_condition': {'dte': None, 'pct_profit': 50, 'pct_loss': None},
+    'sell_condition': {'dte': None, 'pct_profit': 80, 'pct_loss': 50},
 }
 
-strategy = strategy1
+strategy3 = {
+    'type': 'wheel',
+    'buy_condition': {'delta': 0.2, 'dte': 90},
+    'sell_condition': {'dte': None, 'pct_profit': 50, 'pct_loss': 20},
+}
+
+strategy = strategy3
 
 
-# %% Run strategy once with the first buy condition and starting date, to verify it works
+# Run strategy once with the first buy condition and starting date, to verify it works
 start_date = "2021-01-01"
 result = execute_strategy(df2, strategy, date=start_date, log = True)
 print(result)
