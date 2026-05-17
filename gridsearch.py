@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from execute import *
 
 # Grid search over buy condition and start date
-def grid_search(data, buy_conditions, sell_condition, start_dates):
+def grid_search(data, buy_conditions, sell_condition, start_dates, log = False):
     """Run grid search over buy conditions and start dates, returning a list of results."""
 
     # Implement grid search over buy conditions and start dates
@@ -15,7 +15,7 @@ def grid_search(data, buy_conditions, sell_condition, start_dates):
         for start_date in start_dates:
             done += 1
             print(f"\r  {done}/{total}  delta={buy_cond['delta']} dte={buy_cond['dte']} start={start_date}", end="", flush=True)
-            result = execute_strategy(data, buy_cond, sell_condition, date=start_date)
+            result = execute_strategy(data, buy_cond, sell_condition, date=start_date, log = log)
             result["buy_condition"] = buy_cond
             result["start_date"] = start_date
             results.append(result)
@@ -44,7 +44,8 @@ def plot_grid_search_results(results):
 
 # Plot return distribution as histogram for each of the 5 buy conditions
 def plot_return_distribution(results, buy_conditions):
-    fig, axes = plt.subplots(len(buy_conditions), 1, figsize=(10, 4 * len(buy_conditions)), sharex=True)
+    fig, axes = plt.subplots(len(buy_conditions), 1, figsize=(10, 4 * len(buy_conditions)), sharex=True, squeeze=False)
+    axes = axes[:, 0]
     for ax, buy_cond in zip(axes, buy_conditions):
         cond_results = [res for res in results if res["buy_condition"] == buy_cond]
         returns = [res["accrued_pl"] / res["max_capital"] * 100 if res["max_capital"] > 0 else 0 for res in cond_results]

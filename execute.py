@@ -9,34 +9,55 @@ try:
 except NameError:
     def profile(func):
         return func
+    
+
+def set_backtest_range(data, date = None):
+    
+    if date is None:
+        current_date = get_next_date(data, data["QUOTE_DATE"].min())
+    else:
+        current_date = get_next_date(data, pd.to_datetime(date))
+    start_date = pd.to_datetime(current_date)
+
+    # set end_date to max date in df
+    end_date = pd.to_datetime(get_next_date(data, data["QUOTE_DATE"].max()))
+
+    return start_date, end_date
+
+
+def sell_at_expiration(data, quote_open, log=False):
+    """Close the position at expiration. Returns (close_date, quote_close) or (None, None) if not found."""
+    close_date = get_next_date(data, quote_open["EXPIRE_DATE"])
+    quote_close = quote_at_strike(data, close_date, close_date, quote_open["STRIKE"])
+    if log and quote_close is not None:
+        print_short_put(quote_close)
+    return close_date, quote_close
 
 
 # Strategy execution engine with conditions
 @profile
-def execute_strategy(data, buy_condition, sell_condition, date = None):
-    """Execute the short put strategy with the given buy and sell conditions."""
-    # This function will implement the backtesting loop based on the specified conditions.
-    
-    # Execution loop
-    # set current_date to min date in df
-    if date is not None:
-        current_date = get_next_date(data, pd.to_datetime(date))
-    else:
-        current_date = get_next_date(data, data["QUOTE_DATE"].min())
-    start_date = pd.to_datetime(current_date)
-    # set end_date to max date in df
-    end_date = pd.to_datetime(get_next_date(data, data["QUOTE_DATE"].max()))
+def execute_strategy(data, buy_condition, sell_condition, date = None, log = False):
+    """Execute the short put strategy with the given buy and sell conditions."""    
 
-    #end_date = pd.to_datetime(df["QUOTE_DATE"].iloc[-1]) #pd.to_datetime("2021-12-31") 
+    # backtest range
+    start_date, end_date = set_backtest_range(data, date)
+
+    # Execution loop
+    current_date = start_date
     accrued_pl = 0.0
     max_capital = 0.0
-    log = False
     trades = []
     trade_records = []
     while True:
 
         # Execute next condition: sell put on next available date
         quote_open = quote_at(data, current_date, target_delta=buy_condition['delta'], target_dte=buy_condition['dte'], side="P")
+        if quote_open is None:
+            if log: print(f"  Skipping: no open quote found for {current_date}")
+            current_date = get_next_date(data, pd.to_datetime(current_date) + pd.Timedelta(days=1))
+            if current_date is None or pd.to_datetime(current_date) > end_date:
+                break
+            continue
         max_capital = max(max_capital, quote_open["STRIKE"] * 100)
         if log: print_short_put(quote_open)
         trades.append(f"Sell put on {current_date}")
@@ -47,16 +68,52 @@ def execute_strategy(data, buy_condition, sell_condition, date = None):
             "strike": float(quote_open["STRIKE"]),
         })
 
-        # Execute next condition: sell at expiration
-        close_date = get_next_date(data, quote_open["EXPIRE_DATE"])
-        quote_close = quote_at_strike(data, close_date, close_date, quote_open["STRIKE"])    
-        if quote_close is None:
-            if log: print(f"  Skipping: no close quote found for {close_date}")
-            current_date = get_next_date(data, pd.to_datetime(current_date) + pd.Timedelta(days=30))
-            if current_date is None or pd.to_datetime(current_date) > end_date:
+        # Execute next condition: sell on condition
+        # implement other sell conditions (e.g. pct profit/loss)
+        if sell_condition.get("pct_profit") is not None:
+            # Walk forward day by day; close when profit >= pct_profit % of premium
+            pct_profit = sell_condition["pct_profit"] / 100.0
+            p_open = float(quote_open["P_LAST"])
+            expire_date = get_next_date(data, quote_open["EXPIRE_DATE"])
+            if expire_date is None:
+                if log: print(f"  Stopping: expiration {quote_open['EXPIRE_DATE']} is outside the dataset — discarding last open trade")
+                trade_records.pop()
+                trades.pop()
                 break
-            continue
-        if log: print_short_put(quote_close)
+            sorted_dates = data.attrs.get("sorted_dates", np.sort(data.index.unique().values))
+            start_idx = np.searchsorted(sorted_dates, pd.Timestamp(current_date).strftime("%Y-%m-%d")) + 1
+            expire_idx = np.searchsorted(sorted_dates, pd.Timestamp(expire_date).strftime("%Y-%m-%d"), side="right")
+            quote_close = None
+            close_date = expire_date
+            for scan_date in sorted_dates[start_idx:expire_idx]:
+                q = quote_at_strike(data, scan_date, quote_open["EXPIRE_DATE"], quote_open["STRIKE"])
+                if q is None:
+                    continue
+                p_current = float(q["P_LAST"])
+                if p_open > 0 and (p_open - p_current) / p_open >= pct_profit:
+                    quote_close = q
+                    close_date = scan_date
+                    break
+            if quote_close is None:
+                # target never reached — close at expiration
+                close_date, quote_close = sell_at_expiration(data, quote_open, log=log)
+            if quote_close is None:
+                if log: print(f"  Skipping: no close quote found for {close_date}")
+                current_date = get_next_date(data, pd.to_datetime(current_date) + pd.Timedelta(days=30))
+                if current_date is None or pd.to_datetime(current_date) > end_date:
+                    break
+                continue
+            if log: print_short_put(quote_close)
+
+        # Sell at expiration if no other sell condition is met
+        else:
+            close_date, quote_close = sell_at_expiration(data, quote_open, log=log)
+            if quote_close is None:
+                if log: print(f"  Skipping: no close quote found for {close_date}")
+                current_date = get_next_date(data, pd.to_datetime(current_date) + pd.Timedelta(days=30))
+                if current_date is None or pd.to_datetime(current_date) > end_date:
+                    break
+                continue
 
         # Compute trade results
         assigned, total_pl, premium_pl, valuation_pl = compute_trade(quote_open, quote_close)
