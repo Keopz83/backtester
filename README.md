@@ -11,7 +11,7 @@ Following are the currently implemented strategies.
 
 The current implemented strategy is a **short put** (cash-secured put selling):
 - Sell a put at a target delta and DTE each month
-- Close at expiration
+- Close at expiration, or early at a configurable take-profit or stop-loss percentage of the premium collected
 - Track premium P&L, assignment risk, and total return
 
 
@@ -19,13 +19,12 @@ The current implemented strategy is a **short put** (cash-secured put selling):
 
 Planned features to extend the framework beyond the current short put strategy:
 
-1. **Stop-loss / take-profit exit conditions** — close the short put early when the position has gained or lost a target percentage of the premium collected (e.g. close at 50% profit or 200% loss)
-2. **Underlying technicals as entry/exit filters** — gate trades on momentum indicators (SMA crossovers, rate-of-change) or mean-reversion signals (RSI overbought/oversold) derived from the underlying price
-3. **Short covered call** — after taking assignment on a short put, sell an OTM call against the acquired shares to collect additional premium while waiting for the stock to recover
-4. **Wheel strategy** — combine the short put and covered call into a continuous cycle: sell puts until assigned, then sell covered calls until called away, then repeat
-5. **Multi-ticker support** — extend the data pipeline to load and backtest across multiple underlyings (e.g. SPY, AAPL, TSLA) to evaluate strategy robustness beyond QQQ
-6. **Underlying equity backtesting** — add support for trading the underlying stock directly (long/short entries based on technical signals) to compare equity strategies against options strategies on the same data
-7. **Fundamental data as entry filters** — integrate earnings, P/E, revenue growth, or analyst rating signals as additional conditions to gate or size trades
+1. **Short covered call** — after taking assignment on a short put, sell an OTM call against the acquired shares to collect additional premium while waiting for the stock to recover
+2. **Wheel strategy** — combine the short put and covered call into a continuous cycle: sell puts until assigned, then sell covered calls until called away, then repeat
+3. **Underlying technicals as entry/exit filters** — gate trades on momentum indicators (SMA crossovers, rate-of-change) or mean-reversion signals (RSI overbought/oversold) derived from the underlying price
+4. **Multi-ticker support** — extend the data pipeline to load and backtest across multiple underlyings (e.g. SPY, AAPL, TSLA) to evaluate strategy robustness beyond QQQ
+5. **Underlying equity backtesting** — add support for trading the underlying stock directly (long/short entries based on technical signals) to compare equity strategies against options strategies on the same data
+6. **Fundamental data as entry filters** — integrate earnings, P/E, revenue growth, or analyst rating signals as additional conditions to gate or size trades
 
 
 
