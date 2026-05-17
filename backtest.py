@@ -138,18 +138,21 @@ def grid_search(df2, buy_conditions, sell_condition, start_dates):
     """Run grid search over buy conditions and start dates, returning a list of results."""
 
     # Implement grid search over buy conditions and start dates
+    total = len(buy_conditions) * len(start_dates)
+    done = 0
     results = []
     for buy_cond in buy_conditions:
         for start_date in start_dates:
-            #print(f"\n=== Running strategy with buy_condition={buy_cond} and start_date={start_date} ===")
+            done += 1
+            print(f"\r  {done}/{total}  delta={buy_cond['delta']} dte={buy_cond['dte']} start={start_date}", end="", flush=True)
             result = execute_strategy(df2, buy_cond, sell_condition, date=start_date)
             result["buy_condition"] = buy_cond
             result["start_date"] = start_date
             results.append(result)
-    
+    print()
     return results
 
-# Plot 2D bubble chart where x is delta, y is dte, bubble size is return, and color is start date
+# %% Plot 2D bubble chart where x is delta, y is dte, bubble size is return, and color is start date
 def plot_grid_search_results(results):
     import matplotlib.dates as mdates
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -206,9 +209,36 @@ if __name__ == "__main__":
         {'delta': 0.3, 'dte': 60},
     ]
 
+    # Define 10 buy conditions with fixed delta of 0.2 and dte from 7 to 70
+    buy_conditions = [{'delta': 0.2, 'dte': dte} for dte in range(7, 71, 7)]
+
     # simulate 60 different starting dates, radomized, between 2021-02-10 and 2022-11-01
     start_dates = pd.date_range(start="2021-02-10", end="2022-11-01", freq='7D').to_pydatetime().tolist()
     start_dates = [d.strftime("%Y-%m-%d") for d in start_dates]
     results = grid_search(df2, buy_conditions, sell_condition, start_dates)
     #plot_grid_search_results(results)
     plot_return_distribution(results, buy_conditions)
+
+    # plot mean by buy condition
+    mean_returns = []
+    for buy_cond in buy_conditions:
+        cond_results = [res for res in results if res["buy_condition"] == buy_cond]
+        returns = [res["accrued_pl"] / res["max_capital"] * 100 if res["max_capital"] > 0 else 0 for res in cond_results]
+        mean_val = np.mean(returns) if returns else 0
+        mean_returns.append(mean_val)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(len(buy_conditions)), mean_returns, color="steelblue")
+    ax.set_xticks(range(len(buy_conditions)))
+    ax.set_xticklabels([f"Δ={bc['delta']}, DTE={bc['dte']}" for bc in buy_conditions], rotation=45)
+    ax.set_ylabel("Mean Return (%)")
+    ax.set_title("Mean Return by Buy Condition")
+    plt.tight_layout()
+    plt.show()
+
+    # save results to file
+    results_df = pd.DataFrame(results)
+    # create results folder if not existant
+    import os
+    if not os.path.exists("results"):
+        os.makedirs("results")
+    results_df.to_csv("results/grid_search_results.csv", index=False)
