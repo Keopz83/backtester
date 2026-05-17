@@ -31,8 +31,38 @@ Planned features to extend the framework beyond the current short put strategy:
 
 ## Data
 
+### 1. QQQ Daily Option Chains — Kaggle
+
 Source: [QQQ Daily Option Chains Q1 2020 – Q4 2022](https://www.kaggle.com/datasets/kylegraupe/qqq-daily-option-chains-q1-2020-to-q4-2022) (Kaggle)  
 Place the CSV at `data/qqq_2020_2022.csv`.
+
+- **Coverage:** QQQ only, 2020–2022
+- **Format:** CSV with columns including `QUOTE_DATE`, `EXPIRE_DATE`, `DTE`, `STRIKE`, `P_LAST`, `C_LAST`, `P_DELTA`, `C_DELTA`, `UNDERLYING_LAST`
+
+### 2. post-no-preference/options — DoltHub
+
+Source: [post-no-preference/options](https://www.dolthub.com/repositories/post-no-preference/options) (DoltHub, license: CC BY-SA 4.0)  
+Run a local Dolt SQL server and connect via `dolt.py`.
+
+- **Coverage:** 2,274 US equity tickers, 2019-02-09 to 2026-05-12
+- **Size:** ~107.8 million rows in `option_chain`
+- **Tables:**
+  - `option_chain` — bid, ask, vol, and greeks (delta, gamma, theta, vega, rho) per contract
+  - `volatility_history` — current / week-ago / month-ago / year-ago IV high/low and historical variance (useful for IV rank)
+- **Frequency:** weekdays for recent data; Mon/Wed/Fri for older data; weekly for oldest records
+
+**Example rows (`option_chain`):**
+
+| date | act_symbol | expiration | strike | call_put | bid | ask | delta | gamma | theta | vega |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2019-02-09 | NVDA | 2019-02-22 | 126.0 | Call | 22.85 | 23.60 | 0.9038 | 0.0087 | −0.1267 | 0.0495 |
+| 2019-02-09 | NVDA | 2019-02-22 | 126.0 | Put | 0.91 | 0.99 | −0.0972 | 0.0088 | −0.1195 | 0.0499 |
+
+To start the server (requires Dolt installed in WSL):
+```bash
+dolt sql-server   # listens on localhost:3306
+```
+Then run `dolt.py` from Windows to query it via the MySQL protocol.
 
 ## Grid Search
 
