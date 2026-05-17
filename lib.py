@@ -58,6 +58,14 @@ def underlying_at(data, date):
         return float(rows["UNDERLYING_LAST"])
     return float(rows["UNDERLYING_LAST"].iloc[0])
 
+def put_at(data, date, target_delta, target_dte):
+    """Return the put option row closest to target_delta and target_dte on the given date."""
+    return quote_at(data, date, target_delta, target_dte, side="P")
+
+def call_at(data, date, target_delta, target_dte):
+    """Return the call option row closest to target_delta and target_dte on the given date."""
+    return quote_at(data, date, target_delta, target_dte, side="C")
+
 @profile
 def quote_at(data, date, target_delta, target_dte, side):
     """
@@ -113,6 +121,23 @@ def print_short_put(quote):
     print(f"  Premium:    ${premium * 100:.0f}")
 
 
+def print_short_call(quote):
+    if quote is None:
+        print("No quote available.")
+        return
+    premium          = float(quote["C_LAST"])
+    capital_required = float(quote["STRIKE"]) * 100
+
+    print(f"\nShort Call on {quote['QUOTE_DATE']}:")
+    print(f"  Underlying: ${float(quote['UNDERLYING_LAST']):.2f}")
+    print(f"  Delta:      {quote['C_DELTA']:.2f}")
+    print(f"  DTE:        {quote['DTE']:.0f}")
+    print(f"  Expiration: {quote['EXPIRE_DATE']}")
+    print(f"  Strike:     ${quote['STRIKE']}")
+    print(f"  Assignment: ${capital_required}")
+    print(f"  Premium:    ${premium * 100:.0f}")
+
+
 def print_trade(assigned, total_pl, premium_pl, valuation_pl):
     print(f"\nCurrent trade result:")
     print(f"  Assigned: {'Yes' if assigned else 'No'}")
@@ -121,25 +146,30 @@ def print_trade(assigned, total_pl, premium_pl, valuation_pl):
     print(f"    Valuation P/L: ${valuation_pl:.2f}")
 
 
-def compute_trade(quote_open, quote_close):
-    """Return (total_pl, premium_pl, valuation_pl) for a short put between two quotes.
+def compute_trade(quote_open, quote_close, side="P"):
+    """Return (assigned, total_pl, premium_pl, valuation_pl) for a short option trade.
 
-    - premium_pl  : change in extrinsic (time) value captured  = (extrinsic_open - extrinsic_close) * 100
-    - valuation_pl: change in intrinsic value (assignment risk) = (intrinsic_open - intrinsic_close) * 100
-    - total_pl    : premium_pl + valuation_pl  (= option_open - option_close) * 100
+    side='P' for short put, side='C' for short call (covered call).
     """
-    strike         = float(quote_open["STRIKE"])
-    p_open         = float(quote_open["P_LAST"])
-    p_close        = float(quote_close["P_LAST"])
-    ul_open        = float(quote_open["UNDERLYING_LAST"])
-    ul_close       = float(quote_close["UNDERLYING_LAST"])
+    strike   = float(quote_open["STRIKE"])
+    ul_close = float(quote_close["UNDERLYING_LAST"])
 
-    intrinsic_close = ul_close - strike
-    assigned = quote_close["QUOTE_DATE"] == quote_open["EXPIRE_DATE"] and intrinsic_close < 0
-
-    premium_pl   = (p_open - p_close)  * 100
-    valuation_pl = (intrinsic_close if intrinsic_close < 0 else 0) * 100
-    total_pl     = (p_open * 100 + valuation_pl) if assigned else premium_pl
+    if side == "P":
+        opt_open  = float(quote_open["P_LAST"])
+        opt_close = float(quote_close["P_LAST"])
+        intrinsic_close = ul_close - strike          # negative = ITM for put
+        assigned     = quote_close["QUOTE_DATE"] == quote_open["EXPIRE_DATE"] and intrinsic_close < 0
+        premium_pl   = (opt_open - opt_close) * 100
+        valuation_pl = (intrinsic_close if intrinsic_close < 0 else 0) * 100
+        total_pl     = (opt_open * 100 + valuation_pl) if assigned else premium_pl
+    else:  # "C"
+        opt_open  = float(quote_open["C_LAST"])
+        opt_close = float(quote_close["C_LAST"])
+        intrinsic_close = ul_close - strike          # positive = ITM for call
+        assigned     = quote_close["QUOTE_DATE"] == quote_open["EXPIRE_DATE"] and intrinsic_close > 0
+        premium_pl   = (opt_open - opt_close) * 100
+        valuation_pl = (intrinsic_close if intrinsic_close > 0 else 0) * 100
+        total_pl     = (opt_open * 100 - valuation_pl) if assigned else premium_pl
 
     return assigned, total_pl, premium_pl, valuation_pl
 

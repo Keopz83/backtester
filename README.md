@@ -9,18 +9,26 @@ Following are the currently implemented strategies.
 
 #### 1. Recurrent Short Put
 
-The current implemented strategy is a **short put** (cash-secured put selling):
-- Sell a put at a target delta and DTE each month
+A **short put** (cash-secured put selling):
+- Sell a put at a target delta and DTE
 - Close at expiration, or early at a configurable take-profit or stop-loss percentage of the premium collected
 - Track premium P&L, assignment risk, and total return
+
+#### 2. Wheel Strategy
+
+A continuous **wheel** (short put → covered call → repeat):
+- Sell puts until assigned; on assignment, sell a covered call against the acquired shares
+- When called away, restart the put leg — continuing the cycle indefinitely
+- Each leg uses independent delta/DTE entry conditions and a shared take-profit/stop-loss exit condition
+- Plot distinguishes put opens (green ▲), call opens (blue ▲), unassigned closes (▼), put assignments (✕ darkred), and call-aways (✕ navy)
 
 
 ## Roadmap
 
-Planned features to extend the framework beyond the current short put strategy:
+Planned features to extend the framework:
 
-1. **Short covered call** — after taking assignment on a short put, sell an OTM call against the acquired shares to collect additional premium while waiting for the stock to recover
-2. **Wheel strategy** — combine the short put and covered call into a continuous cycle: sell puts until assigned, then sell covered calls until called away, then repeat
+1. ~~**Short covered call**~~ ✅ — implemented as part of the wheel strategy
+2. ~~**Wheel strategy**~~ ✅ — implemented; see strategy `type: "wheel"` in `backtest.py`
 3. **Underlying technicals as entry/exit filters** — gate trades on momentum indicators (SMA crossovers, rate-of-change) or mean-reversion signals (RSI overbought/oversold) derived from the underlying price
 4. **Multi-ticker support** — extend the data pipeline to load and backtest across multiple underlyings (e.g. SPY, AAPL, TSLA) to evaluate strategy robustness beyond QQQ
 5. **Underlying equity backtesting** — add support for trading the underlying stock directly (long/short entries based on technical signals) to compare equity strategies against options strategies on the same data
@@ -74,7 +82,8 @@ Example: sweep 10 DTE values (7–70 days) at fixed delta 0.2 across ~90 weekly 
 
 ## Sample screenshots
 
-![Strategy Plot](screenshots/screenshot_strategy_plot.png)
+![Strategy Plot — Short Put](screenshots/screenshot_strategy_plot.png)
+![Strategy Plot — Wheel](screenshots/screenshot_wheel_plot.png)
 ![Return Distribution by Condition](screenshots/screenshot_gridsearch_return_dist_by_condition.png)
 ![Mean Return by Condition](screenshots/screenshot_gridsearch_mean_return_by_condition.png)
 

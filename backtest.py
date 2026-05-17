@@ -35,25 +35,32 @@ df2 = load_data(DATA_PATH)
 #buy_conditions = [{'delta': 0.2, 'dte': dte} for dte in [7, 30, 45, 90]]
 
 # %% Define strategy
-strategy1 = {
+strategy_puts1 = {
     'type': 'short_put',
     'buy_condition': {'delta': 0.2, 'dte': 90},
     'sell_condition': {'dte': None, 'pct_profit': 80, 'pct_loss': None},
 }
 
-strategy2 = {
-    'type': 'wheel',
+strategy_puts2 = {
+    'type': 'short_put',
     'buy_condition': {'delta': 0.2, 'dte': 30},
     'sell_condition': {'dte': None, 'pct_profit': 80, 'pct_loss': 50},
 }
 
-strategy3 = {
-    'type': 'wheel',
+strategy_puts3 = {
+    'type': 'short_put',
     'buy_condition': {'delta': 0.2, 'dte': 90},
     'sell_condition': {'dte': None, 'pct_profit': 50, 'pct_loss': 20},
 }
 
-strategy = strategy3
+strategy_wheel = {
+    'type': 'wheel',
+    'put_condition':  {'delta': 0.2, 'dte': 90},
+    'call_condition': {'delta': 0.2, 'dte': 90},
+    'sell_condition': {'pct_profit': 80, 'pct_loss': None},
+}
+
+strategy = strategy_wheel
 
 
 # Run strategy once with the first buy condition and starting date, to verify it works
@@ -69,7 +76,7 @@ start_dates = pd.date_range(start="2021-02-10", end="2022-11-01", freq='25D').to
 start_dates = [d.strftime("%Y-%m-%d") for d in start_dates]
 # start_dates = ['2021-01-01']
 
-buy_conditions = [strategy['buy_conditions']]
+buy_conditions = [strategy['buy_condition']]
 sell_condition = strategy['sell_condition']
 results = grid_search(df2, buy_conditions, sell_condition, start_dates, log = False)
 plot_return_distribution(results, buy_conditions)
